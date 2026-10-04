@@ -1,0 +1,18 @@
+.env
+.DS_Store
+# backend
+backend/.venv/
+backend/data/
+backend/*.egg-info/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+# frontend
+frontend/node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+frontend/.e2e-data/
+*.vault
+*.sqlite
+*.tsbuildinfo

@@ -1,0 +1,34 @@
+# Artha runs as its own Compose project, isolated from anything else on the host.
+# Only the web container is published, and only on localhost; the host nginx terminates TLS.
+name: artha
+
+services:
+  api:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ARTHA_DATA_DIR: /data
+      ARTHA_TRUST_PROXY: "true"
+    volumes:
+      - artha_data:/data
+    networks: [artha]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on: [api]
+    ports:
+      - "127.0.0.1:${ARTHA_WEB_PORT:-8080}:80"
+    networks: [artha]
+    security_opt: ["no-new-privileges:true"]
+
+volumes:
+  artha_data:
+
+networks:
+  artha:
