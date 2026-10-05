@@ -37,6 +37,8 @@ import {
 import { PassphraseInput, passphraseStrength } from '@/components/inputs';
 import { toast, toastError } from '@/components/toast';
 import { ImportVaultFile } from '@/features/onboarding/Onboarding';
+import { defaultTaxRules, getTaxRules, saveTaxRules } from '@/repositories/mfPortfolio';
+import { Textarea } from '@/components/ui';
 
 type Tab = 'security' | 'backup' | 'lists';
 
@@ -73,6 +75,7 @@ export function SettingsPage() {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Lookups />
           <Categories />
+          <TaxRulesEditor />
         </div>
       )}
     </>
@@ -451,6 +454,7 @@ const CATEGORY_TITLES: Record<LookupCategory, string> = {
   AccountRole: 'Account roles',
   CredentialChannel: 'Credential channels',
   TxnMode: 'Transaction modes',
+  InvestmentPlatform: 'Investment platforms',
 };
 
 function Lookups() {
@@ -585,6 +589,47 @@ function Categories() {
           Add category
         </Button>
       </form>
+    </Card>
+  );
+}
+
+function TaxRulesEditor() {
+  const current = useDb(() => JSON.stringify(getTaxRules(), null, 2));
+  const [text, setText] = useState(current);
+  const [err, setErr] = useState('');
+  useEffect(() => setText(current), [current]);
+  const save = (value: string) => {
+    try {
+      saveTaxRules(JSON.parse(value));
+      setErr('');
+      toast('Tax rules saved');
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  };
+  return (
+    <Card title="Mutual fund tax rules" className="lg:col-span-2">
+      <p className="mb-3 text-sm text-slate-500">
+        Used for short/long-term classification, exemption and estimated tax on the Capital gains
+        screen. Rates are in %, amounts in paise, and each regime applies by sale date. Verify with
+        your CA.
+      </p>
+      <Textarea
+        rows={16}
+        className="font-mono text-xs"
+        spellCheck={false}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+      />
+      {err && <Alert tone="red">{err}</Alert>}
+      <div className="mt-3 flex justify-end gap-2">
+        <Button variant="secondary" onClick={() => save(JSON.stringify(defaultTaxRules()))}>
+          Reset to defaults
+        </Button>
+        <Button disabled={text === current} onClick={() => save(text)}>
+          Save rules
+        </Button>
+      </div>
     </Card>
   );
 }

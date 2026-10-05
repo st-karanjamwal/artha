@@ -16,6 +16,7 @@ export const LOOKUP_CATEGORIES = [
   'AccountRole',
   'CredentialChannel',
   'TxnMode',
+  'InvestmentPlatform',
 ] as const;
 export type LookupCategory = (typeof LOOKUP_CATEGORIES)[number];
 

@@ -15,8 +15,10 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
+    "decimal.js": "^10.6.0",
     "hash-wasm": "^4.12.0",
     "papaparse": "^5.7.0",
+    "pdfjs-dist": "^6.4.299",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-hook-form": "^7.89.0",

@@ -56,6 +56,14 @@ UI rules (`src/components/SecretField.tsx`):
 - `PUT /api/vault` requires `If-Match: <blob_version>`; a stale version returns `409`, and the
   browser asks you to reload. It never silently overwrites.
 
+## Mutual-fund data
+
+- The CAS PDF (and its password) is opened with pdf.js **in the browser**; it is never uploaded.
+- `InvestmentAccount.LoginId_Enc` / `Password_Enc` use the same field-level secrets layer.
+- Public NAV data comes through server relays (`/api/public/*`, session required so the server
+  is not an open proxy). AMFI and mfapi.in only see the server's IP and, for history, a scheme code.
+  The parsed AMFI list is kept in browser memory only, not in the vault.
+
 ## Browser hardening
 
 - Auto-lock after inactivity (default 5 min, configurable) and optionally when the tab is hidden.

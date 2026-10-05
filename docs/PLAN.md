@@ -308,24 +308,50 @@ child), import a CSV statement, balances match the bank statement.
 
 ## 7. Phase 2 — Mutual Funds & SIPs (self, spouse, kids)
 
-```sql
-AMCs(AMCId, Name, Website, Notes, …audit)
-Schemes(SchemeId, AMCId, SchemeName, AMFICode, ISIN, Category, Plan[Direct/Regular], Option[Growth/IDCW], IsActive)
-Folios(FolioId, AMCId, FolioNumber, PrimaryPersonId, BankAccountId, Notes, …audit)
-FolioPersons(FolioId, PersonId, Role[Primary/Joint/Nominee/Guardian])
-SIPs(SIPId, FolioId, SchemeId, Amount, Frequency, SIPDay, StartDate, EndDate, StepUpPercent, MandateRef, Status[Active/Paused/Stopped])
-MFTransactions(MFTransactionId, FolioId, SchemeId, TxnDate, TxnType[Purchase/SIP/Redemption/SwitchIn/SwitchOut/IDCW/STP/SWP],
-               Amount, Units, NAV, StampDuty, SIPId NULL, BankTransactionId NULL)
-NAVHistory(SchemeId, NAVDate, NAV)
-```
+> **Full specification: [docs/modules/MUTUAL_FUNDS.md](modules/MUTUAL_FUNDS.md).** It supersedes
+> the earlier sketch that was here (AMCs/Schemes/Folios/MFTransactions/NAVHistory).
 
-- Holdings & average cost computed from transactions (FIFO for capital gains).
-- **NAV refresh:** browser fetches AMFI daily NAV file (`https://www.amfiindia.com/spages/NAVAll.txt`)
-  via a backend proxy endpoint that only relays public data (no user data sent).
-- **CAS import:** parse CAMS/KFintech Consolidated Account Statement (PDF via `casparser`
-  logic or Excel) — import into folios/transactions.
-- Reports: current value, invested, gain, XIRR per scheme/person/family; upcoming SIP dates;
-  short/long-term capital gains for the financial year (Apr–Mar).
+Owner's design decisions (keep them):
+
+1. ISIN and AMFI scheme code live on **`MutualFundPlan`** (Direct/Regular × Growth/IDCW), not on
+   `MutualFund`.
+2. **One transaction table, `MFTransaction`**, for purchase, SIP, redemption, switch in/out,
+   IDCW payout/reinvest, bonus and transfers.
+3. **No holdings table.** Holdings are always derived from transactions (`vMFHoldings`).
+4. **`InvestmentAccount` is generic** (platform per person), so shares and bonds can reuse it later.
+
+Tables: `MutualFund`, `MutualFundPlan`, `InvestmentAccount` (→ `Persons`), `MFFolio`,
+`MFFolioPerson` (Primary/Joint/Nominee/Guardian), `SIP`, `MFTransaction`, `MFNAVHistory`, plus
+`SIPHistory` (status audit) and `MFImportBatch` (undoable imports).
+
+**Convention exceptions for this module (owner-approved in the spec):** table names are singular
+as the owner designed them; master tables use `Status` instead of `IsActive`; NAV and units are
+`INTEGER` **micro-units** (× 1,000,000); expense ratio and percentages are `INTEGER` hundredths of
+a basis point (0.65% → 6500). Money stays `INTEGER` paise. All unit maths uses `decimal.js`
+(`frontend/src/lib/units.ts`); never multiply money in SQL.
+
+Highlights:
+
+- Transaction rules (sign of units, bank cash flow `TotalAmount`, stamp duty, exit load, TDS) and
+  redemption validation against units held per folio + plan + date.
+- FIFO lots → invested amount, realised/unrealised gains, short/long-term split, capital gains per
+  FY (Apr–Mar). Tax rules are configurable settings (defaults ship with a "verify with your CA" note).
+- XIRR per plan, person and family (Newton-Raphson with bisection fallback), absolute return, CAGR.
+- **NAV:** backend relay `GET /api/public/amfi-nav` (AMFI `NAVAll.txt`, cached daily; public data
+  only, nothing about the user is sent) and an optional, pluggable historical-NAV relay.
+  Fund search over the AMFI list auto-fills scheme code, ISIN, plan and option.
+- **SIPs:** schedule (month-end clamping, pause, step-up, end date), pending-instalment
+  confirmations on unlock, monthly/annual totals per person and family.
+- **Imports:** CAMS/KFintech **CAS PDF** parsed in the browser with pdf.js (password-protected PDFs
+  supported; the PDF never reaches the server), platform CSV with saved mappings, duplicate
+  detection, reconciliation of closing units, and undo.
+- Screens: MF dashboard, portfolio, fund detail, funds master, investment accounts & folios, SIPs,
+  transactions (switch wizard), capital gains, import.
+
+**Acceptance:** see §12 of the module spec (3 funds via AMFI search; accounts for self, spouse and
+a child with guardian; 3 SIPs showing ₹30,000/month and ₹3,60,000/year; confirm instalments;
+refresh NAV; CAS import with zero unit mismatches; partial redemption appears in the FY report;
+works on a phone; all data inside the encrypted vault).
 
 ## 8. Phase 3 — Insurance
 
@@ -467,9 +493,9 @@ artha/
 
 ## 17. Milestone checklist
 
-- [ ] Phase 0 — Foundation, encryption, auth, save/sync, backup, deploy to EC2
-- [ ] Phase 1 — Family, Banks, Accounts, Credentials, Transactions, CSV import, Dashboard v1
-- [ ] Phase 2 — Mutual Funds & SIPs (+ CAS import, NAV refresh, XIRR)
+- [x] Phase 0 — Foundation, encryption, auth, save/sync, backup (EC2 deploy pending)
+- [x] Phase 1 — Family, Banks, Accounts, Credentials, Transactions, CSV import, Dashboard v1
+- [x] Phase 2 — Mutual Funds & SIPs (+ CAS import, NAV refresh, XIRR) — spec: docs/modules/MUTUAL_FUNDS.md
 - [ ] Phase 3 — Insurance (+ premium reminders)
 - [ ] Phase 4 — Property
 - [ ] Phase 5 — Gold/Silver & Kitty

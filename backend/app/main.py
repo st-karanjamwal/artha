@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from . import auth, backup_gdrive, vault
+from . import auth, backup_gdrive, public_data, vault
 from .settings import get_settings
 
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
@@ -53,6 +53,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(vault.router)
     app.include_router(backup_gdrive.router)
+    app.include_router(public_data.router)
     return app
 
 

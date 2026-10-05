@@ -1,0 +1,29 @@
+Scheme Code;ISIN Div Payout/ ISIN Growth;ISIN Div Reinvestment;Scheme Name;Net Asset Value;Date
+
+Open Ended Schemes(Equity Scheme - Flexi Cap Fund)
+
+HDFC Mutual Fund
+
+118955;INF179K01UT0;-;HDFC Flexi Cap Fund - Growth Option - Direct Plan;1950.1234;03-Oct-2026
+101762;INF179K01608;-;HDFC Flexi Cap Fund - Growth Plan;1801.5500;03-Oct-2026
+118956;INF179K01UU8;INF179K01UV6;HDFC Flexi Cap Fund - IDCW Option - Direct Plan;85.4400;03-Oct-2026
+
+Open Ended Schemes(Equity Scheme - Large Cap Fund)
+
+Axis Mutual Fund
+
+120465;INF846K01CH7;-;Axis Bluechip Fund - Direct Plan - Growth;62.3400;03-Oct-2026
+120466;INF846K01CI5;INF846K01CJ3;Axis Bluechip Fund - Direct Plan - IDCW;18.2100;03-Oct-2026
+
+Open Ended Schemes(Hybrid Scheme - Aggressive Hybrid Fund)
+
+ICICI Prudential Mutual Fund
+
+120251;INF109K01Z48;-;ICICI Prudential Equity & Debt Fund - Direct Plan - Growth;412.7800;03-Oct-2026
+120252;-;-;ICICI Prudential Equity & Debt Fund - Direct Plan - Monthly IDCW;N.A.;03-Oct-2026
+
+Open Ended Schemes(Debt Scheme - Liquid Fund)
+
+SBI Mutual Fund
+
+119800;INF200K01RJ1;-;SBI Liquid Fund - DIRECT PLAN - Growth;4012.5671;03-Oct-2026

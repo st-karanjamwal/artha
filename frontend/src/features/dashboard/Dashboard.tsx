@@ -26,6 +26,10 @@ import {
 } from '@/repositories/dashboard';
 import { Badge, Button, Card, EmptyState, PageHeader, Tabs } from '@/components/ui';
 import { Money } from '@/components/inputs';
+import { aggregate, computeHoldings } from '@/repositories/mfPortfolio';
+import { sipTotals } from '@/repositories/sips';
+import { PendingSips } from '@/features/mf/SipsPage';
+import { Gain } from '@/features/mf/components';
 
 // Validated categorical slots 1–2 (light / dark steps).
 const SERIES = {
@@ -206,10 +210,12 @@ export function Dashboard() {
   const byBank = useDb(balanceByBank);
   const maturities = useDb(upcomingMaturities);
   const topCats = useDb(() => topExpenseCategories(addDays(todayLocal(), -29)));
+  const mf = useDb(() => aggregate(computeHoldings(), 'family')[0]);
+  const sip = useDb(() => sipTotals());
   const [groupTab, setGroupTab] = useState<'person' | 'bank'>('person');
   const today = todayLocal();
 
-  if (!byBank.length && !byPerson.length) {
+  if (!byBank.length && !byPerson.length && !mf) {
     return (
       <>
         <PageHeader title="Dashboard" />
@@ -254,6 +260,26 @@ export function Dashboard() {
           }
         />
       </div>
+
+      {(mf || sip.count > 0) && (
+        <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <Link
+            to="/mf"
+            className="block rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-brand-500 lg:col-span-2 dark:border-slate-800 dark:bg-slate-900"
+          >
+            <p className="text-xs uppercase tracking-wide text-slate-500">Mutual funds</p>
+            <div className="mt-1 flex flex-wrap items-baseline gap-x-6 gap-y-1">
+              <Money paise={mf?.value ?? 0} className="text-2xl font-semibold" />
+              {mf && <Gain value={mf.gain} base={mf.invested} className="text-sm" />}
+              <span className="text-sm text-slate-500">
+                SIP <Money paise={sip.monthly} />
+                /month
+              </span>
+            </div>
+          </Link>
+          <PendingSips limit={3} />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <FlowChart />

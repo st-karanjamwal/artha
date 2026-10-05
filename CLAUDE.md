@@ -1,6 +1,6 @@
 # Artha: rules for Claude Code
 
-Master plan: [docs/PLAN.md](docs/PLAN.md). Status: Phase 0 and Phase 1 are done; next is Phase 2 (mutual funds).
+Master plan: [docs/PLAN.md](docs/PLAN.md). Status: Phases 0, 1 and 2 (mutual funds, spec in docs/modules/MUTUAL_FUNDS.md) are done; next is Phase 3 (insurance).
 
 ## Non-negotiables (plan §16)
 
@@ -22,6 +22,9 @@ Master plan: [docs/PLAN.md](docs/PLAN.md). Status: Phase 0 and Phase 1 are done;
 - Master tables have `CreatedOn`/`UpdatedOn` (UTC ISO) and `IsActive` (soft delete); `Notes TEXT`.
 - Business dates are local `YYYY-MM-DD` text.
 - New "type" lists go in `LookupValues` (and `LookupCategory` in `repositories/lookups.ts`).
+- Mutual funds: units/NAV are INTEGER micro-units via `src/lib/units.ts` (decimal.js); never multiply
+  money in SQL; holdings are derived from `MFTransaction` (no holdings table). MF tables are singular
+  and use `Status` instead of `IsActive`, as the owner specified.
 - Business logic lives in `frontend/src/repositories/*.ts` (sync functions over sql.js).
   Components call them through `useDb(() => …, deps)`.
 

@@ -1,7 +1,8 @@
 # Artha
 
 A private, end-to-end-encrypted personal finance vault for one household. It stores family
-members, banks, accounts, credentials and transactions, and shows balances and a dashboard.
+members, banks, accounts, credentials, transactions and mutual funds (SIPs, CAS import, NAV,
+XIRR, capital gains), and shows balances and dashboards.
 
 The whole database is one SQLite file. It is encrypted **in your browser** and the server only ever
 sees an opaque encrypted blob. The server never sees your passphrase, keys or data.
@@ -10,7 +11,8 @@ sees an opaque encrypted blob. The server never sees your passphrase, keys or da
 |---|---|---|
 | 0 | Foundation: encryption, server auth (password + TOTP), save/sync, versions, backup, export/import | ✅ Done |
 | 1 | Family, banks, accounts, holders/nominees, credentials, security questions, transactions, statement import, dashboard | ✅ Done |
-| 2–7 | Mutual funds, insurance, property, gold/kitty, shares, loans | Planned ([docs/PLAN.md](docs/PLAN.md)) |
+| 2 | Mutual funds & SIPs: AMFI fund search, folios, SIPs, CAS PDF import, NAV refresh, XIRR, FIFO capital gains ([spec](docs/modules/MUTUAL_FUNDS.md)) | ✅ Done |
+| 3–7 | Insurance, property, gold/kitty, shares, loans | Planned ([docs/PLAN.md](docs/PLAN.md)) |
 
 ---
 
@@ -64,7 +66,8 @@ artha/
 │  ├─ PLAN.md              master plan (all phases)
 │  ├─ SECURITY.md          security model, threat notes
 │  ├─ DEPLOY.md            EC2 + Docker + nginx + Google Drive setup
-│  └─ RESTORE.md           every way to get your data back
+│  ├─ RESTORE.md           every way to get your data back
+│  └─ modules/MUTUAL_FUNDS.md   Phase 2 specification + implementation notes
 ├─ docker-compose.yml      api + web containers
 ├─ .env.example            server configuration template
 ├─ nginx/artha.conf        host nginx server block (TLS, HSTS)
@@ -74,6 +77,7 @@ artha/
 │  │  ├─ auth.py           setup, login, TOTP, sessions, rate limiting
 │  │  ├─ vault.py          blob storage, If-Match locking, version history
 │  │  ├─ backup_gdrive.py  Google Drive upload + retention + nightly scheduler
+│  │  ├─ public_data.py    relays for PUBLIC NAV data (AMFI NAVAll.txt, NAV history)
 │  │  ├─ settings.py       ARTHA_* environment settings
 │  │  └─ storage.py        atomic file writes
 │  ├─ scripts/
@@ -86,9 +90,10 @@ artha/
    │  ├─ db/               sql.js setup, migrations/*.sql, migration runner, autosave
    │  ├─ repositories/     all queries & business rules (+ tests)
    │  ├─ features/         screens: onboarding, dashboard, family, banks, accounts,
-   │  │                    transactions, import, settings
+   │  │                    transactions, import, settings, mf/ (mutual funds)
+   │  │  └─ mf/calc/       pure maths: FIFO lots, XIRR, tax rules, SIP schedules (+ tests)
    │  ├─ components/       shared UI: SecretField, MoneyInput, Modal, …
-   │  ├─ lib/              money (paise ↔ ₹), dates, validators, API client
+   │  ├─ lib/              money (paise ↔ ₹), units (MF micro-units), dates, validators, API client
    │  └─ app/              routing, layout, session (unlock/lock/save), theme
    └─ e2e/                 Playwright acceptance test
 ```
@@ -171,7 +176,8 @@ backup file instead"** on the create screen.
 | **Accounts** | Group by person or bank. Detail tabs: **Overview** (encrypted account number, maturity, reconcile against the bank's balance), **Holders & Nominees** (one primary; joint, nominee with share %, guardian), **Credentials** (net banking / app / UPI / phone banking, all encrypted), **Security Questions**, **Transactions**, **Notes** |
 | **Transactions** | Filter by account, dates, category, amount, text. Running balance per account. Add income/expense, **self-transfer** (two linked legs; edits and deletes apply to both), bulk-categorise, link two imported rows as one transfer |
 | **Import statement** | Upload CSV/XLSX → pick the header row and map columns (saved per bank) → preview with duplicate detection (date + amount + reference) → import → check the statement closing balance matches → **undo** any import batch |
-| **Settings** | Auto-lock timeout, lock on tab hide, require passphrase to reveal; change passphrase; change login password; Google Drive status / back up now; export/import `.vault`; server version history (download/restore); edit lists (account types, modes…) and categories |
+| **Mutual funds** | **Overview**: value, invested, gain, XIRR, monthly/annual SIP, invested-vs-value chart, split by person/category/AMC, pending SIP confirmations. **Portfolio**: per folio + plan units, average cost, NAV, value, gain, XIRR, ST/LT mix. **SIPs**: add/edit/pause/resume/stop, step-up, upcoming instalments, one-click confirmation (units computed after 0.005% stamp duty; optional bank debit). **Transactions**: purchase, redemption (exit-load warning; can't exceed units held), IDCW, bonus, transfers, switch wizard. **Funds**: add from the AMFI list (scheme code, ISIN, plan, option filled in) or manually. **Accounts & folios**: platform per person, folios with joint holders, nominees and a guardian for minors. **Capital gains**: FIFO realised gains per FY and person, equity/debt ST/LT, LTCG exemption, estimated tax, CSV/XLSX export. **Import**: CAMS/KFintech CAS PDF (read in the browser, password supported) with reconciliation, or platform CSV with saved mappings; undo any import |
+| **Settings** | Auto-lock timeout, lock on tab hide, require passphrase to reveal; change passphrase; change login password; Google Drive status / back up now; export/import `.vault`; server version history (download/restore); edit lists (account types, modes, platforms…), categories and **mutual-fund tax rules** |
 
 Save status is shown top-right (**Saved / Unsaved / Saving… / Save failed / Conflict**).
 Changes autosave 3 seconds after the last edit. If another device saved in the meantime, you'll be
@@ -180,14 +186,17 @@ asked to reload the latest version; nothing is silently overwritten.
 ## Tests and checks
 
 ```bash
-# Backend: 18 tests (auth, TOTP replay, lockout, CSRF, vault locking/versions, backup retention)
+# Backend: 22 tests (auth, TOTP replay, lockout, CSRF, vault locking/versions, backup retention,
+# public NAV relays incl. stale cache)
 cd backend && .venv/bin/pytest -q && .venv/bin/ruff check . && .venv/bin/ruff format --check .
 
-# Frontend: 32 unit tests (crypto, tamper detection, money math, dates, migrations,
-# balances, transfers, statement import + duplicates + undo)
+# Frontend: 68 unit tests (crypto, tamper detection, money math, dates, migrations,
+# balances, transfers, statement import; MF: units/stamp duty, XIRR vs Excel, FIFO, tax rules,
+# SIP schedules, holdings view, redemption validation, AMFI parser, CAS import + reconciliation)
 cd frontend && npm test && npm run lint && npx tsc --noEmit
 
-# End-to-end acceptance (starts both servers itself, uses a throwaway data dir in frontend/.e2e-data)
+# End-to-end (starts two isolated backend + web stacks and a local AMFI fixture server;
+# throwaway data in frontend/.e2e-data)
 cd frontend && npx playwright install chromium   # first time only
 npm run e2e
 ```
@@ -199,8 +208,15 @@ assert no plaintext** → lock → reload → wrong passphrase rejected → unlo
 secret masked, then revealed → recovery-key unlock with a new passphrase → **CSV statement import**
 (balance matches the statement) → re-import flags duplicates → undo import.
 
-Screenshots of every main screen (desktop + phone, light + dark) for visual review:
-`SHOTS=1 npx playwright test e2e/screens.spec.ts` → `frontend/.e2e-data/shots/`.
+A second test runs the mutual-fund acceptance flow (spec §12): accounts for self, spouse and a
+child (guardian enforced) → 3 funds via AMFI search → 3 SIPs showing ₹30,000/month and
+₹3,60,000/year → confirm an instalment (79.677 units) → refresh NAV → **CAS PDF import with zero
+unit mismatches**, re-import = duplicates → partial redemption appears in the FY capital-gains
+report → no plaintext in the stored vault.
+
+Screenshots for visual review (desktop + phone, light + dark) → `frontend/.e2e-data/shots/`:
+`SHOTS=1 npx playwright test e2e/screens.spec.ts` (core screens) and
+`SHOTS=1 npx playwright test --project=mf` (mutual-fund screens).
 
 ## Backend reference
 
@@ -223,12 +239,16 @@ The backend is deliberately "dumb": auth, blob storage, versions, backup. It can
 | `POST /api/vault/restore/{v}` | session | Copy an old version forward as newest |
 | `GET /api/backup/status` | session | Google Drive backup state |
 | `POST /api/backup/run` | session | Back up now |
+| `GET /api/public/amfi-nav` | session | Relay of AMFI's public `NAVAll.txt` (cached ~6 h; stale copy if AMFI is down) |
+| `GET /api/public/nav-history/{code}` | session | Relay of a scheme's public NAV history (mfapi.in; cached daily; pluggable) |
 
 Notes:
 
 - Every `POST/PUT` must send `X-Artha-Request: 1` (CSRF defence together with the
   `SameSite=Strict` cookie).
 - Login: 5 failures per IP (20 globally) in 15 minutes → `429`. TOTP codes cannot be reused.
+- The `/api/public/*` relays only fetch public mutual-fund data; nothing about you is sent to
+  AMFI or mfapi.in (they see your server's IP and, for history, a scheme code).
 - Sessions are in memory, so restarting the server signs everyone out. That's intentional.
 - On disk (`ARTHA_DATA_DIR`): `auth.json` (Argon2 hash + TOTP secret, mode 600),
   `vault/versions/00000001.vault …`, `vault/meta.json`, `backup_state.json`.
@@ -239,6 +259,8 @@ Notes:
 - **All business logic is in the browser.** `src/repositories/*.ts` are plain synchronous
   functions over the in-memory SQLite database (`src/db/sql.ts` → `all`, `one`, `run`, `tx`).
   Every write triggers autosave and refreshes the UI via `useDb(() => query(), deps)`.
+- **Mutual-fund units and NAV** are `INTEGER` micro-units (× 1,000,000); all unit maths goes through
+  `src/lib/units.ts` (decimal.js). Holdings are never stored; they are derived from `MFTransaction`.
 - **Money** is always `INTEGER` paise. Use `parseToPaise` / `formatINR` (`src/lib/money.ts`) at
   the UI edge only; Indian grouping is `₹12,34,567.00`.
 - **Secrets** (`*_Enc` columns) are encrypted with `encryptSecret` (`src/crypto/secrets.ts`) and
@@ -248,7 +270,8 @@ Notes:
 - **Lookups** (account types, roles, modes, relationships) live in the `LookupValues` table and
   are editable in Settings → Lists.
 - Stack: React 19, TypeScript, Vite, Tailwind CSS v4, React Router, React Hook Form + Zod,
-  Recharts, sql.js, hash-wasm (Argon2id), Web Crypto (AES-GCM/HKDF), PapaParse, SheetJS.
+  Recharts, sql.js, hash-wasm (Argon2id), Web Crypto (AES-GCM/HKDF), PapaParse, SheetJS,
+  decimal.js, pdf.js (CAS PDFs, parsed locally).
   No runtime CDNs, analytics or telemetry; the CSP allows only `'self'`.
 
 ## Configuration (.env)
@@ -267,6 +290,8 @@ All server settings use the `ARTHA_` prefix (see [.env.example](.env.example)).
 | `ARTHA_GDRIVE_CLIENT_ID` / `_CLIENT_SECRET` / `_REFRESH_TOKEN` / `_FOLDER_ID` | *(empty)* | Google Drive backup (all four needed) |
 | `ARTHA_BACKUP_TIME` | `03:00` | Daily backup time (local) |
 | `ARTHA_BACKUP_KEEP_DAILY` / `_MONTHLY` | `30` / `12` | Drive retention |
+| `ARTHA_AMFI_NAV_URL` | AMFI `NAVAll.txt` | Source for daily NAVs |
+| `ARTHA_NAV_HISTORY_PROVIDER` | `mfapi` | Historical NAV relay: `mfapi` or `none` |
 | `ARTHA_ENABLE_DOCS` | `false` | Expose `/api/docs` |
 | `ARTHA_WEB_PORT` | `8080` | Host port for the web container (bound to 127.0.0.1) |
 
@@ -291,4 +316,7 @@ All server settings use the `ARTHA_` prefix (see [.env.example](.env.example)).
 | "Vault schema vN is newer than this app" | Deploy the latest frontend |
 | Bounced to unlock screen | Auto-lock (Settings → Security), tab-hide lock, or a page reload. Unlock again |
 | Statement import shows many "Invalid date" | Pick the right **Date format** in the mapping step |
+| CAS reconciliation shows a difference | Request a **detailed** CAS **since inception**; a CAS for a shorter period starts with an opening balance Artha doesn't know about |
+| "Not enough units" when redeeming | Units are checked per folio + plan on that date; pick the right folio, or record the missing purchase/CAS first |
+| NAV is old | Overview → **Refresh NAV** (AMFI publishes after ~9 PM IST); it also refreshes once a day on unlock |
 | Imported balance doesn't match the statement | Check the account's **opening balance** and its *as of* date, and look for transactions before the statement period |

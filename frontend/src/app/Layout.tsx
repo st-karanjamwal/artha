@@ -10,6 +10,8 @@ import { PassphraseGate } from '@/components/SecretField';
 import { toastError } from '@/components/toast';
 import { lock, reloadLatest, useDb } from './session';
 import { useTheme, type Theme } from './theme';
+import { autoResumeExpiredPauses } from '@/repositories/sips';
+import { navRefreshDue, refreshNavs } from '@/features/mf/navService';
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: '◧' },
@@ -18,6 +20,7 @@ const NAV = [
   { to: '/accounts', label: 'Accounts', icon: '▤' },
   { to: '/transactions', label: 'Transactions', icon: '⇄' },
   { to: '/import', label: 'Import statement', icon: '⇪' },
+  { to: '/mf', label: 'Mutual funds', icon: '◔' },
   { to: '/settings', label: 'Settings', icon: '⚙' },
 ];
 
@@ -257,8 +260,21 @@ function Brand() {
   );
 }
 
+/** Once per unlock: resume SIPs whose pause ended, and refresh NAVs if a day has passed. */
+function useUnlockTasks() {
+  useEffect(() => {
+    try {
+      autoResumeExpiredPauses();
+      if (navRefreshDue()) void refreshNavs().catch(() => {});
+    } catch {
+      /* non-critical */
+    }
+  }, []);
+}
+
 export function Layout(): ReactNode {
   useAutoLock();
+  useUnlockTasks();
   const [drawer, setDrawer] = useState(false);
   const loc = useLocation();
   useEffect(() => setDrawer(false), [loc.pathname]);

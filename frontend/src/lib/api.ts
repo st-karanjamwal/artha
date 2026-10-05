@@ -112,6 +112,21 @@ export const api = {
   versions: () => json<{ current_version: number; versions: VaultVersion[] }>('/vault/versions'),
   restoreVersion: (v: number) => post<VaultMeta>(`/vault/restore/${v}`),
 
+  async amfiNav(
+    force = false,
+  ): Promise<{ text: string; fetchedAt: string | null; cache: string | null }> {
+    const res = await request(`/public/amfi-nav${force ? '?force=true' : ''}`);
+    return {
+      text: await res.text(),
+      fetchedAt: res.headers.get('X-Fetched-At'),
+      cache: res.headers.get('X-Cache'),
+    };
+  },
+  navHistory: (schemeCode: string) =>
+    json<{ schemeCode: string; schemeName: string | null; data: { date: string; nav: string }[] }>(
+      `/public/nav-history/${encodeURIComponent(schemeCode)}`,
+    ),
+
   backupStatus: () => json<BackupStatus>('/backup/status'),
   backupRun: () => post<BackupStatus>('/backup/run'),
 };

@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     backup_keep_daily: int = 30
     backup_keep_monthly: int = 12
 
+    # Public mutual-fund data relays (no user data is sent).
+    amfi_nav_url: str = "https://www.amfiindia.com/spages/NAVAll.txt"
+    nav_history_provider: str = "mfapi"  # "mfapi" or "none"
+    mfapi_base_url: str = "https://api.mfapi.in/mf"
+
     @property
     def gdrive_configured(self) -> bool:
         return bool(
